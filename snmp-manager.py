@@ -3,6 +3,7 @@
 
 import sys
 from ConfigParser import SafeConfigParser
+from pysnmp.entity.rfc3413.oneliner import cmdgen
 
 class SnmpManager:
     def __init__(self):
@@ -13,16 +14,29 @@ class SnmpManager:
             'description': desc, \
             'address': addr, \
             'port': int(port), \
-            'community_ro': comm_ro, \
+            'communityro': comm_ro, \
             'checks': {}, \
         }
 
     def add_check(self, id_, oid, desc, system):
-        oid_tuple = tuple([int(i) for i in oid.split(':')])
+        oid_tuple = tuple([int(i) for i in oid.split('.')])
         self.systems[system]['checks'][id_] = { \
             'description': desc, \
             'oid': oid_tuple, \
         }
+
+    def query_all_systems(self):
+        cg = cmdgen.CommandGenerator()
+        for system in self.systems.values():
+            comm_data = cmdgen.CommunityData('my-manager', system['communityro'])
+            transport = cmdgen.UdpTransportTarget((system['address'], system['port']))
+            for check in system['checks'].values():
+                oid = check['oid']
+                errInd, errStatus, errIdx, result = cg.getCmd(comm_data, transport, oid)
+                if not errInd and not errStatus:
+                    print('{sysDesc}/{chkDesc} -> {result}'.format(sysDesc=system['description'],\
+                                                                   chkDesc=check['description'],\
+                                                                   result=str(result[0][1])))
 
 def main(conf_file=""):
     if not conf_file:
@@ -41,3 +55,10 @@ def main(conf_file=""):
                                config.get(check, 'oid'), \
                                config.get(check, 'description'), \
                                config.get(check, 'system'))
+    snmp_manager.query_all_systems()
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print("Usage: snmp-manager.py [ini]")
+    else:
+        main(sys.argv[1])
